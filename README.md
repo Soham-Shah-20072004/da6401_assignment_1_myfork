@@ -1,4 +1,4 @@
-# Assignment 1: Neural Network from Scratch
+# Assignment 1: Multi-Layer Perceptron for Image Classification
 
 ## Overview
 
