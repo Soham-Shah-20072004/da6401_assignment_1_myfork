@@ -57,8 +57,10 @@ class Layer:
         # it outputs del column vector for this layer
         local_error = error_w_next * self.activation_derivative(self.weighted_sum)
         # get grad_W and grad_b for this layer
-        self.grad_W = np.dot(local_error,self.input_vector.T) # del*X^T
-        self.grad_b = np.sum(local_error, axis=1, keepdims=True) # as del = dL/dz, and dz/db=1, dL/dz*dz/db = dL/db = del
+        self.grad_W = np.dot(local_error,self.input_vector.T) # del*X^T, local_error = neurons * batch, input vector = input_sizee * batch, so we get grad_w = neurons * input_size same as W
+        self.grad_b = np.sum(local_error, axis=1, keepdims=True) 
+        # local error is a matrix of size (layer_size, batch_size), we sum across the batch dimension to get the sum of gradients of bias for each neuron in this layer, resulting in a column vector of size (layer_size, 1)
+        # as del = dL/dz, and dz/db=1, dL/dz*dz/db = dL/db = del
         raw_error_w_prev = np.dot((self.W).T,local_error) 
         
         # del_prev_layer = W^T . del_this_layer * activation_derivative(z_prev_layer) -- 
