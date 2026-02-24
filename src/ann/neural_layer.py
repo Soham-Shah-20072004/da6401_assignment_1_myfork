@@ -7,10 +7,11 @@ Handles weight initialization, forward pass, and gradient computation
 import numpy as np  
 import activations
 class Layer:
-    def __init__(self, input_size, layer_size,weight_init = 'zeros',layer_type = 'hidden'):
+    def __init__(self, input_size, layer_size,weight_init = 'zeros',layer_type = 'hidden',activation_function = None):
         self.input_size = input_size
         self.layer_size = layer_size
         self.layer_type = layer_type
+        self.activation_function = activation_function
         
         # initialize bias with zeros
         self.bias = np.zeros((layer_size, 1))
