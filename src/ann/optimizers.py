@@ -51,17 +51,115 @@ class Momentum:
             layer.W = layer.W - velocity_w[i]
             layer.bias = layer.bias - velocity_b[i]
 
-class Nag:
-    # to be implemented
-    pass
+class NAG:
+    def __init__(self, learning_rate=0.01, weight_decay=0.0, momentum=0.9):
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.gamma = momentum
+    def update(self, layers):
+        # LAZY INITIALIZATION: If this is epoch 1, batch 1, the memory is empty.
+        # We must create zero-matrices the exact same shape as the layer's W and b.
+        velocity_w = {}
+        velocity_b = {}
+
+        for i,layer in enumerate(layers):
+            # for first time, we need to initialize as zeros, we need to check if it present already
+            if i not in velocity_w:
+                velocity_w[i] = np.zeros_like(layer.W)
+                velocity_b[i] = np.zeros_like(layer.bias)
+            # apply weight decay if specified (to make large gradients and large updates)
+            layer.grad_W += self.weight_decay * layer.W
+            # update velocity   
+            # from old velocity matrix to new 
+            velocity_w[i] = self.learning_rate * self.grad_W + self.gamma * velocity_w[i]
+            velocity_b[i] = self.learning_rate * self.grad_b + self.gamma * velocity_b[i]
+            # update weights and bias using NAG update rule
+            # excellent mathematical trick to compute the look ahead gradient without actually computing the look ahead weights, we can directly use the current velocity to compute the look ahead gradient, and then use that look ahead gradient to update the weights and bias, this is because the velocity is already a combination of the current gradient and the past velocity, so it already contains the information about the look ahead position, so we can directly use it to compute the look ahead gradient.
+            layer.W = layer.W - (self.gamma * velocity_w[i] + self.learning_rate * layer.grad_W)
+            layer.bias = layer.bias - (self.gamma * velocity_b[i] + self.learning_rate * layer.grad_b)
+            # here the weight matrix is not the normal weights, but they are weights - gamma*velocity, which is the look ahead position, and we are using the gradient at the current position to update the weights, which is the NAG update rule. This is a very clever trick to compute the look ahead gradient without actually computing the look ahead weights, which saves a lot of computation and also gives better convergence properties.
+
+# ADAGRAD
+# RMSPROP
+# ADAM
+# NADAM
 class Adam:
     # to be implemented
-    pass
+    def __init__(self, learning_rate=0.01, weight_decay=0.0, beta1=0.9, beta2=0.999):
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = 1e-8
+
+    def update(self, layers):
+        m_w = {}
+        v_w = {}
+        m_b = {}
+        v_b = {}
+
+        for i,layer in enumerate(layers):
+            if i not in m_w:
+                m_w[i] = np.zeros_like(layer.W)
+                v_w[i] = np.zeros_like(layer.W)
+                m_b[i] = np.zeros_like(layer.bias)
+                v_b[i] = np.zeros_like(layer.bias)
+
+            # apply weight decay if specified
+            layer.grad_W += self.weight_decay * layer.W
+
+            # Update biased first moment estimate
+            m_w[i] = self.beta1 * m_w[i] + (1 - self.beta1) * layer.grad_W
+            m_b[i] = self.beta1 * m_b[i] + (1 - self.beta1) * layer.grad_b
+
+            # Update biased second raw moment estimate
+            v_w[i] = self.beta2 * v_w[i] + (1 - self.beta2) * (layer.grad_W ** 2)
+            v_b[i] = self.beta2 * v_b[i] + (1 - self.beta2) * (layer.grad_b ** 2)
+
+            # Compute bias-corrected first moment estimate
+            # Initialize timestep counter if not exists
+            if not hasattr(self, 't'):
+                self.t = 0
+            self.t += 1
+            
+            # Compute bias-corrected first moment estimate
+            m_hat_w = m_w[i] / (1 - self.beta1 ** self.t)
+            m_hat_b = m_b[i] / (1 - self.beta1 ** self.t)
+
+            # Compute bias-corrected second raw moment estimate
+            v_hat_w = v_w[i] / (1 - self.beta2 ** self.t)
+            v_hat_b = v_b[i] / (1 - self.beta2 ** self.t)
+
+            # Update weights and bias using Adam update rule
+            layer.W -= self.learning_rate * m_hat_w / (np.sqrt(v_hat_w) + self.epsilon)
+            layer.bias -= self.learning_rate * m_hat_b / (np.sqrt(v_hat_b) + self.epsilon)
+
 class Nadam:
     # to be implemented
     pass
 
 class RMSprop:
     # to be implemented
+    def __init__(self, learning_rate=0.01, weight_decay=0.0, decay_rate=0.9):
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.beta = decay_rate
+    def update(self, layers):
+        velocity_w = {}
+        velocity_b = {}
+        for i,layer in enumerate(layers):
+            if i not in velocity_w:
+                velocity_w[i] = np.zeros_like(layer.W)
+                velocity_b[i] = np.zeros_like(layer.bias)
+            # apply weight decay if specified (to make large gradients and large updates)
+            layer.grad_W += self.weight_decay * layer.W
+            # update velocity   
+            velocity_w[i] = self.beta * velocity_w[i] + (1 - self.beta) * (layer.grad_W ** 2)
+            velocity_b[i] = self.beta * velocity_b[i] + (1 - self.beta) * (layer.grad_b ** 2)
+            # update weights and bias using RMSprop update rule
+            # epsilon = 1e-8 is added to the denominator to prevent division by zero, and it also helps to stabilize the updates when the velocity is very small, which can happen when the gradients are very small, and it can also help to prevent the updates from becoming too large when the gradients are very large, so it is a very important hyperparameter in RMSprop and Adam optimizers.
+            layer.W = layer.W - (self.learning_rate / (np.sqrt(velocity_w[i]) + 1e-8)) * layer.grad_W
+            layer.bias = layer.bias - (self.learning_rate / (np.sqrt(velocity_b[i]) + 1e-8)) * layer.grad_b
+
     pass
         
