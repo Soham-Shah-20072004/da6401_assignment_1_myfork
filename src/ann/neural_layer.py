@@ -8,7 +8,7 @@ import numpy as np
 import activations
 class Layer:
     def __init__(self, input_size, layer_size,weight_init = 'zeros',layer_type = 'hidden',activation_function = None):
-        self.input_size = input_size
+        self.input_size = input_size # 2D matrix of size (input_size, batch_size) 
         self.layer_size = layer_size
         self.layer_type = layer_type
         self.activation_function = activation_function
@@ -17,7 +17,8 @@ class Layer:
         self.bias = np.zeros((layer_size, 1))
         # initialize weights based on the specified technique
         if weight_init == 'zeros':
-            self.W = np.zeros((layer_size, input_size))
+            self.W = np.zeros((layer_size, input_size)) 
+            # this will give us a 3D, where 3rd dimension is over batch size-- though the 3rd dimension it is the first dimension in shape tuple
         elif weight_init == 'random':
             self.W = np.random.rand(layer_size, input_size)  # intializes random weights within 0 and 1
         elif weight_init == 'xavier':
@@ -31,7 +32,7 @@ class Layer:
         # initialize the gradients of weights and bias of this layer, will get updated during backward()
         self.grad_W = np.zeros_like(self.W)
         self.grad_b = np.zeros_like(self.bias)
-    
+
         if self.layer_type == 'hidden':
             self.activation_function = activations.hidden_activation_function
             self.activation_derivative = activations.hidden_activation_derivative
@@ -58,9 +59,15 @@ class Layer:
         # it outputs del column vector for this layer
         local_error = error_w_next * self.activation_derivative(self.weighted_sum)
         # get grad_W and grad_b for this layer
+
         self.grad_W = np.dot(local_error,self.input_vector.T) # del*X^T, local_error = neurons * batch, input vector = input_sizee * batch, so we get grad_w = neurons * input_size same as W
-        self.grad_b = np.sum(local_error, axis=1, keepdims=True) 
+        # need to average, by simply dividing by batch size
+        self.grad_W /= self.input_vector.shape[1]  # divide by batch size
+
+        self.grad_b = np.sum(local_error, axis=1, keepdims=True)
+        self.grad_b /= self.input_vector.shape[1]  # divide by batch size 
         # local error is a matrix of size (layer_size, batch_size), we sum across the batch dimension to get the sum of gradients of bias for each neuron in this layer, resulting in a column vector of size (layer_size, 1)
+        
         # as del = dL/dz, and dz/db=1, dL/dz*dz/db = dL/db = del
         raw_error_w_prev = np.dot((self.W).T,local_error) 
         
