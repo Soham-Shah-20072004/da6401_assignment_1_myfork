@@ -3,7 +3,11 @@ Main Neural Network Model class
 Handles forward and backward propagation loops
 """
 
+from wandb.util import np
+
+from ann import optimizers
 from ann.neural_layer import Layer
+import objective_functions
 
 
 class NeuralNetwork:
@@ -23,6 +27,20 @@ class NeuralNetwork:
         self.hidden_layers_sizes = cli_args.hidden_size
         self.weight_init_method = cli_args.weight_init
         self.hidden_activation_function = cli_args.activation
+        self.loss_type = cli_args.loss
+        # 1. Initialize the Optimizer Switchboard
+        if cli_args.optimizer == 'sgd':
+            self.optimizer = optimizers.SGD(learning_rate=cli_args.learning_rate, weight_decay=cli_args.weight_decay)
+        elif cli_args.optimizer == 'momentum':
+            self.optimizer = optimizers.Momentum(learning_rate=cli_args.learning_rate, weight_decay=cli_args.weight_decay)
+        elif cli_args.optimizer == 'nag':
+            self.optimizer = optimizers.NAG(learning_rate=cli_args.learning_rate, weight_decay=cli_args.weight_decay)
+        elif cli_args.optimizer == 'rmsprop':
+            self.optimizer = optimizers.RMSprop(learning_rate=cli_args.learning_rate, weight_decay=cli_args.weight_decay)
+        elif cli_args.optimizer == 'adam':
+            self.optimizer = optimizers.Adam(learning_rate=cli_args.learning_rate, weight_decay=cli_args.weight_decay)
+        else:
+            raise ValueError(f"Unsupported optimizer: {cli_args.optimizer}")
 
         self.input_size = 784  # for MNIST dataset
         self.output_size = 10  # for MNIST dataset
@@ -90,7 +108,7 @@ class NeuralNetwork:
         """
         Update weights using the optimizer.
         """
-
+        self.optimizer.update(self.layers)
         
         pass
     
@@ -98,10 +116,58 @@ class NeuralNetwork:
         """
         Train the network for specified epochs.
         """
+        epoch_loss = []
+        for epoch in range(epochs):
+            number_of_batches = X_train.shape[1] // batch_size
+            # but if the number of samples is not perfectly divisible by batch size, then we will have some remaining samples in the last batch, so we need to handle that case as well, we can simply ignore those remaining samples for simplicity, or we can create a smaller batch for those remaining samples, but for now we will ignore those remaining samples for simplicity.
+            batch_loss = []
+            batch_accuracy = []
+            total_epoch_loss = 0
+            for batch_number in range(0,number_of_batches):
+                # make the batch X from X_train and y_train
+                batch_X = X_train[:,batch_number*batch_size:(batch_number+1)*batch_size] # last one is not included in slicing
+                batch_y = y_train[:,batch_number*batch_size:(batch_number+1)*batch_size] # last one is not included in slicing
+                # forward pass
+                batch_output= self.forward(batch_X)
+                # backward pass
+                self.backward(batch_y, batch_output) # this does not return anything, but it computes and stores the gradients in each layer object
+                # update weights
+                self.update_weights() # this will use the gradients stored in each layer object to update the weights and bias of each layer using the specified optimizer
+            # track the loss per epoch
+                if self.loss_type == 'cross_entropy':
+                    # objective_function.categorical_cross_entropy(batch_y, batch_output) # this will give us a vector of loss values for each sample in the batch, we can take the mean of this vector to get the average loss for the batch,
+                    batch_loss = np.mean(objective_functions.categorical_cross_entropy(batch_y, batch_output)) # this will give us a vector of loss values for each sample in the batch,
+                
+                print(f"Epoch {epoch+1}, Batch {batch_number+1}, Loss: {batch_loss}")
+                batch_loss.append(batch_loss)
+            
+                predicted_class_index = np.argmax(batch_output, axis=0)
+                true_class_index = np.argmax(batch_y, axis=0)
+                correct_predictions = np.sum(predicted_class_index == true_class_index) # this sums over number of times value in first list is equal to corresponding value in second list, giving us the number of correct predictions in the batch
+                batch_accuracy.append(correct_predictions / batch_y.shape[1]) # this gives us the accuracy for the batch, which is the number of correct predictions divided by the total number of samples in the batch
+                # np.argmax gives the index of the maximum value on the specified axis, so np.argmax(batch_output, axis=0) gives us the predicted class for each sample in the batch, and np.argmax(batch_y, axis=0) gives us the true class for each sample in the batch, so we can compare these two to get the number of correct predictions in the batch, and then we can calculate the accuracy for the batch as correct_predictions / batch_size, and we can track this accuracy for each batch and also for each epoch to see how our model is performing during training.
+                total_epoch_loss += batch_loss*batch_size
+                
+            epoch_loss_i = total_epoch_loss/X_train.shape[1] # average loss for the epoch
+            print(f"Epoch {epoch+1}, Loss: {epoch_loss_i}, Accuracy: {np.mean(batch_accuracy)}")
+            epoch_loss.append(epoch_loss_i)
         pass
     
     def evaluate(self, X, y):
         """
         Evaluate the network on given data.
         """
-        pass
+        self.forward(X)
+        # Compute accuracy
+        predicted_class_index = np.argmax(self.output, axis=0)
+        true_class_index = np.argmax(y, axis=0)
+        correct_predictions = np.sum(predicted_class_index == true_class_index)
+        accuracy = correct_predictions / y.shape[1]
+        print(f"Evaluation Accuracy: {accuracy}")
+
+        # compute loss
+        if self.loss_type == 'cross_entropy':
+            loss = np.mean(objective_functions.categorical_cross_entropy(y, self.output))
+            print(f"Evaluation Loss: {loss}")
+        
+        return accuracy, loss
