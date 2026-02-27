@@ -35,7 +35,9 @@ def parse_arguments():
     parser.add_argument('--hidden_layers', type=int, default=1, help="Number of hidden layers")
     parser.add_argument('--num_neurons', type=int, nargs='+', default=[128], help="List of hidden layer sizes")
     parser.add_argument('--activation', type=str, choices=['relu', 'sigmoid', 'tanh'], default='relu', help="choose activation function used during training")
-    
+    parser.add_argument('--num_layers', type=int, default=1, help="Number of hidden layers (same as hidden_layers, but needed for initializing the empty shell)")
+    parser.add_argument('--hidden_size', type=int, nargs='+', default=[128], help="List of hidden layer sizes")  
+
     return parser.parse_args()
 
 def load_model(model_path, args):
@@ -76,10 +78,10 @@ def evaluate_model(model, X_test, y_test):
     """
 
     # Forward pass through the model
-    logits = model.forward(X_test.T)  # Transpose to match input shape (features, samples)
+    logits = model.forward(X_test)  
     predictions = np.argmax(logits, axis=0)  # Get predicted class labels
     true_labels = np.argmax(y_test.T, axis=0)  # Get true class labels from
-    loss = obj_funcs.categorical_cross_entropy(y_test.T, logits) # compute loss using the categorical cross entropy function implemented in objective functions file
+    loss = obj_funcs.categorical_cross_entropy(y_test, logits) # compute loss using the categorical cross entropy function implemented in objective functions file
     
 
     # 4. Calculate Sklearn Metrics

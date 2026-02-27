@@ -53,7 +53,7 @@ import wandb
 
 # Import your custom modules
 from src.ann.neural_network import NeuralNetwork
-from src.utils.data_loader import load_data, preprocess_data
+from src.utils.data_loader import load_data, pre_processing_data
 
 def parse_arguments():
     """
@@ -102,8 +102,8 @@ def main():
     print(f"Loading and preprocessing {args.dataset} dataset...")
     X_train_raw, y_train_raw, X_test_raw, y_test_raw = load_data(args.dataset)
     
-    X_train, y_train = preprocess_data(X_train_raw, y_train_raw)
-    X_test, y_test = preprocess_data(X_test_raw, y_test_raw)
+    X_train, y_train = pre_processing_data(X_train_raw, y_train_raw)
+    X_test, y_test = pre_processing_data(X_test_raw, y_test_raw)
     
     # 4. Build the Neural Network
     print(f"Building network with {args.hidden_layers} hidden layer(s)...")
@@ -111,7 +111,7 @@ def main():
     
     # 5. Execute Training Loop
     print("Starting training...")
-    model.train(
+    list_of_epoch_loss = model.train(
         X_train=X_train, 
         y_train=y_train, 
         epochs=args.epochs, 

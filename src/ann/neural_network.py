@@ -3,11 +3,12 @@ Main Neural Network Model class
 Handles forward and backward propagation loops
 """
 
-from wandb.util import np
+import numpy as np
 
 from ann import optimizers
 from ann.neural_layer import Layer
 import objective_functions
+from utils.data_loader import batch_generator
 
 
 class NeuralNetwork:
@@ -46,11 +47,15 @@ class NeuralNetwork:
         self.output_size = 10  # for MNIST dataset
 
         for i in range(self.num_of_hidden_layers):
+            layer_type = "hidden"
             if i==0:
                 current_input_size = self.input_size
             else:
                 current_input_size = self.hidden_layers_sizes[i-1] # for hidden layer i (starting from 0 index), the input size is the layer size of the i-1 th hidden layer
-            hidden_layer_i = Layer(current_input_size, self.hidden_layers_sizes[i], weight_init=self.weight_init_method,layer_type="hidden")
+            
+            if i==self.num_of_hidden_layers-1:
+                layer_type = "output"
+            hidden_layer_i = Layer(current_input_size, self.hidden_layers_sizes[i], weight_init=self.weight_init_method,layer_type=layer_type)
             self.layers.append(hidden_layer_i)
 
             # so we are done with a list of hidden layers
@@ -58,8 +63,6 @@ class NeuralNetwork:
         # now we add the output layer, which takes input from the last hidden layer and outputs the final output
         output_layer = Layer(input_size=self.hidden_layers_sizes[-1], layer_size=self.output_size, weight_init=self.weight_init_method,layer_type="output")
         self.layers.append(output_layer)
-
-        pass
     
     def forward(self, X):
         """
@@ -77,7 +80,7 @@ class NeuralNetwork:
             current_output = layer.forward(current_input_signal)
             current_input_signal = current_output
         return current_output
-        # this is the final output of the output layer (if everythying works fine, this is predicted proabalities for each class for each sample in the batch, so it should be of size (output_size, batch_size)) = y_hat
+        # this is the final logits of the output layer (if everythying works fine, this is predicted proabalities for each class for each sample in the batch, so it should be of size (output_size, batch_size)) = y_hat
     
     def backward(self, y_true, y_pred):
         """
@@ -96,11 +99,10 @@ class NeuralNetwork:
         # so basically the backward function needs del.w from next layer and then it calculates its del. this del is used for calcuting gradients. but for output layer, the del i.e. dL/dz is already known as error = y_pred - y-true
         # so ASSUMING WE HAVE ACTIVATION DERIVATIVE FOR OUTPUT LAYER SET AS 1, we can directly input this error signal right from the output layer, and everything will work fine.
 
-        for layer in self.layers.reverse():
+        for layer in reversed(self.layers):
             intermed_error = layer.backward(error_signal)  # this will compute and store the graadients and return del.w value which is the input for the next layer in the reverse order
             error_signal = intermed_error
-        pass
-    
+            
         # with this we have gradients stored in each layer object where each value in the matrix rep the sum of gradients of Loss wrt to that weight across the batch
         # so we might have to divide by batch size to get the mean gradient for each weight, and then we can use these gradients to update the weights using the optimizer, which will be implemented in the update_weights() method of this class.
         
@@ -109,9 +111,7 @@ class NeuralNetwork:
         Update weights using the optimizer.
         """
         self.optimizer.update(self.layers)
-        
-        pass
-    
+           
     def train(self, X_train, y_train, epochs, batch_size):
         """
         Train the network for specified epochs.
@@ -120,54 +120,53 @@ class NeuralNetwork:
         for epoch in range(epochs):
             number_of_batches = X_train.shape[1] // batch_size
             # but if the number of samples is not perfectly divisible by batch size, then we will have some remaining samples in the last batch, so we need to handle that case as well, we can simply ignore those remaining samples for simplicity, or we can create a smaller batch for those remaining samples, but for now we will ignore those remaining samples for simplicity.
-            batch_loss = []
-            batch_accuracy = []
-            total_epoch_loss = 0
-            for batch_number in range(0,number_of_batches):
-                # make the batch X from X_train and y_train
-                batch_X = X_train[:,batch_number*batch_size:(batch_number+1)*batch_size] # last one is not included in slicing
-                batch_y = y_train[:,batch_number*batch_size:(batch_number+1)*batch_size] # last one is not included in slicing
+            batch_losses = []
+            
+            for X_batch,y_batch in batch_generator(X_train, y_train, batch_size):               
                 # forward pass
-                batch_output= self.forward(batch_X)
-                # backward pass
-                self.backward(batch_y, batch_output) # this does not return anything, but it computes and stores the gradients in each layer object
-                # update weights
-                self.update_weights() # this will use the gradients stored in each layer object to update the weights and bias of each layer using the specified optimizer
+                batch_pred= self.forward(X_batch)
+                
             # track the loss per epoch
                 if self.loss_type == 'cross_entropy':
-                    # objective_function.categorical_cross_entropy(batch_y, batch_output) # this will give us a vector of loss values for each sample in the batch, we can take the mean of this vector to get the average loss for the batch,
-                    batch_loss = np.mean(objective_functions.categorical_cross_entropy(batch_y, batch_output)) # this will give us a vector of loss values for each sample in the batch,
+                    loss = objective_functions.categorical_cross_entropy(y_batch, batch_pred)
+                    
+                else: # mse
+                    loss = objective_functions.mse(y_batch, batch_pred)
                 
-                print(f"Epoch {epoch+1}, Batch {batch_number+1}, Loss: {batch_loss}")
-                batch_loss.append(batch_loss)
-            
-                predicted_class_index = np.argmax(batch_output, axis=0)
-                true_class_index = np.argmax(batch_y, axis=0)
-                correct_predictions = np.sum(predicted_class_index == true_class_index) # this sums over number of times value in first list is equal to corresponding value in second list, giving us the number of correct predictions in the batch
-                batch_accuracy.append(correct_predictions / batch_y.shape[1]) # this gives us the accuracy for the batch, which is the number of correct predictions divided by the total number of samples in the batch
-                # np.argmax gives the index of the maximum value on the specified axis, so np.argmax(batch_output, axis=0) gives us the predicted class for each sample in the batch, and np.argmax(batch_y, axis=0) gives us the true class for each sample in the batch, so we can compare these two to get the number of correct predictions in the batch, and then we can calculate the accuracy for the batch as correct_predictions / batch_size, and we can track this accuracy for each batch and also for each epoch to see how our model is performing during training.
-                total_epoch_loss += batch_loss*batch_size
+                batch_losses.append(np.mean(loss))# mean loss of the batch 
+
+                # backward pass
+                # calls its own ability/function of backward pass
+                self.backward(y_batch,batch_pred)   
+
+                # update weights
+                self.update_weights()
+               
                 
-            epoch_loss_i = total_epoch_loss/X_train.shape[1] # average loss for the epoch
-            print(f"Epoch {epoch+1}, Loss: {epoch_loss_i}, Accuracy: {np.mean(batch_accuracy)}")
-            epoch_loss.append(epoch_loss_i)
-        pass
+            mean_epoch_loss= np.mean(batch_losses) # average loss for the epoch
+            print(f"Epoch {epoch+1}, Loss: {mean_epoch_loss}")
+            epoch_loss.append(mean_epoch_loss)
+        return epoch_loss # this is a list of mean loss values for each epoch, which can be used for plotting the loss curve after training is done.
     
     def evaluate(self, X, y):
         """
         Evaluate the network on given data.
         """
-        self.forward(X)
+        # X and y are of the form d*N and c*N
+        output = self.forward(X)
         # Compute accuracy
-        predicted_class_index = np.argmax(self.output, axis=0)
+        predicted_class_index = np.argmax(output, axis=0)
         true_class_index = np.argmax(y, axis=0)
         correct_predictions = np.sum(predicted_class_index == true_class_index)
-        accuracy = correct_predictions / y.shape[1]
+        accuracy = correct_predictions / y.shape[1] 
         print(f"Evaluation Accuracy: {accuracy}")
 
         # compute loss
         if self.loss_type == 'cross_entropy':
-            loss = np.mean(objective_functions.categorical_cross_entropy(y, self.output))
-            print(f"Evaluation Loss: {loss}")
+            loss = np.mean(objective_functions.categorical_cross_entropy(y, output))
+        else:
+            loss = np.mean(objective_functions.mse(y, output))    
+            
+        print(f"Evaluation Loss: {loss}")
         
         return accuracy, loss
