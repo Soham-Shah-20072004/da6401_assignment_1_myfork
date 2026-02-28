@@ -42,14 +42,14 @@ def pre_processing_data(X,y):
     # superb technique to one hot encode labels, create identity matrix which serves as a loopup table for each integer accessed by the index of its row.
     ten_ten_identity = np.eye(10)
     # y_train serves as a list of integers which are the indices of tthe rows that needs to be grabbed from this ten cross ten matrix
-    y_train_one_hot = ten_ten_identity[y]
-    return X, y_train_one_hot
+    y_one_hot = ten_ten_identity[y]
+    return X.T, y_one_hot.T
 
 
 # batch generator
 def batch_generator(X,y,batch_size):
     # shuffling the dataset
-    no_of_samples = X.shape[0]
+    no_of_samples = X.shape[1]
     indices = np.arange(no_of_samples) # this gives a list of integers from 0 to number=X.shape[0] = nu of samples
     np.random.shuffle(indices) # inplace shuffled indices list
 
@@ -59,8 +59,8 @@ def batch_generator(X,y,batch_size):
         # slices the indices of indices
         samples_indices =indices[start:end_index]
 
-        X_batch,y_batch = X[samples_indices], y[samples_indices]
+        X_batch,y_batch = X[:,samples_indices], y[:,samples_indices]
         
         # yield vs return understood
-        yield X_batch.T, y_batch.T
+        yield X_batch, y_batch
 

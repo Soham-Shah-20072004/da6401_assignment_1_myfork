@@ -127,10 +127,11 @@ def main():
     save_dir = os.path.dirname(args.model_save_path)
     if save_dir and not os.path.exists(save_dir):
         os.makedirs(save_dir)
-        
+    
+    # SAVE THE MODEL WEIGHTS AS BEST WEIGHTS AND BEST MODEL.npy file
     # Dump the fully trained memory banks (weights and biases) to disk
     with open(args.model_save_path, 'wb') as f:
-        pickle.dump(model.layers, f)
+        pickle.dump({'layers': model.layers}, f)
         
     # Close the wandb tracking instance
     wandb.finish()

@@ -5,14 +5,13 @@ Handles weight initialization, forward pass, and gradient computation
 
 # layer should know the input size and its own size, also initialization of weights technique
 import numpy as np  
-import activations
+from ann import activations
 class Layer:
-    def __init__(self, input_size, layer_size,weight_init = 'zeros',layer_type = 'hidden',activation_function = None):
+    def __init__(self, input_size, layer_size,weight_init = 'zeros',layer_type = 'hidden',activation_function = 'relu'):
         self.input_size = input_size # 2D matrix of size (input_size, batch_size) 
         self.layer_size = layer_size
         self.layer_type = layer_type
-        self.activation_function = activation_function
-        
+                
         # initialize bias with zeros
         self.bias = np.zeros((layer_size, 1))
         # initialize weights based on the specified technique
@@ -34,11 +33,10 @@ class Layer:
         self.grad_b = np.zeros_like(self.bias)
 
         if self.layer_type == 'hidden':
-            self.activation_function = activations.hidden_activation_function
-            self.activation_derivative = activations.hidden_activation_derivative
+            self.activation_function, self.activation_derivative = activations.get_activation(activation_function)
         elif self.layer_type == 'output':
-            self.activation_function = activations.output_activation_function
-            self.activation_derivative = activations.output_activation_derivative
+            # no one is specifying output activation. but we know its always softmax.
+            self.activation_function, self.activation_derivative = activations.get_activation('softmax')
         
     # defining forward pass method, which takes the input vector and computes the activations/output of this layer
     def forward(self, input_vector):
