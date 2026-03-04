@@ -4,13 +4,12 @@ Evaluate trained models on test sets
 """
 
 import argparse
-import pickle as pkl
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.metrics import confusion_matrix as cm
-from src.ann.neural_network import NeuralNetwork
-import src.ann.objective_functions as obj_funcs
-import src.utils.data_loader as data_loader
+from ann.neural_network import NeuralNetwork
+import ann.objective_functions as obj_funcs
+import utils.data_loader as data_loader
 
 
 def parse_arguments():
@@ -27,7 +26,7 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(description='Run inference on test set')
     # Core inference arguments
-    parser.add_argument('--model_path', type=str, required=True, help="please give relative path to saved model weights (e.g., models/weights.pkl)")
+    parser.add_argument('--model_path', type=str, required=True, help="please give relative path to saved model weights (e.g., src/best_model.npy)")
     parser.add_argument('--dataset', type=str, choices=['mnist', 'fashion_mnist'], default='mnist', help="choose the Dataset to evaluate on")
     parser.add_argument('--batch_size', type=int, default=32, help="choose the batch size for inference")
     
@@ -49,19 +48,26 @@ def load_model(model_path, args):
     class DummyArgs:
         loss = 'cross_entropy'
         optimizer = 'sgd' # no need, Ignored during inference, but needed to initalize the empty neural network
-        num_layers = args.hidden_layers
-        hidden_size = args.num_neurons
+        num_layers = args.num_layers
+        
+        # Ensure hidden_size is a list, cast it if it is a single integer
+        hidden_sizes_list = args.hidden_size
+        if isinstance(hidden_sizes_list, int):
+            hidden_sizes_list = [hidden_sizes_list] * args.num_layers
+            
+        hidden_size = hidden_sizes_list
         activation = args.activation
         weight_init = 'random'
+        learning_rate = 0.01
+        weight_decay = 0.0
     
     # build the empty shell
     model = NeuralNetwork(DummyArgs())
 
-    # load the saved weights and inject into this empty placeholder model
-    with open(model_path, 'rb') as f:
-        saved_weights = pkl.load(f)
-
-    model.layers = saved_weights['layers']
+    # load the saved weights
+    # this is DESERIALIZATION . and inject into this empty placeholder model
+    saved_weights = np.load(model_path, allow_pickle=True).item()
+    model.set_weights(saved_weights)
     # these saved_weights are simply the weights and biases of each layer
     # fundamentally it could be a layer object (smart/trained layers object list)
 
@@ -80,8 +86,11 @@ def evaluate_model(model, X_test, y_test):
     # Forward pass through the model
     logits = model.forward(X_test)  
     predictions = np.argmax(logits, axis=0)  # Get predicted class labels
-    true_labels = np.argmax(y_test.T, axis=0)  # Get true class labels from
-    loss = obj_funcs.categorical_cross_entropy(y_test, logits) # compute loss using the categorical cross entropy function implemented in objective functions file
+    true_labels = np.argmax(y_test, axis=0)  # Get true class labels from (10, N) -> (N,)
+    
+    # compute loss using the categorical cross entropy function implemented in objective functions file
+    # objective_functions returns individual losses per sample (shape N,), so we average them for the epoch loss
+    loss = np.mean(obj_funcs.categorical_cross_entropy(y_test, logits)) 
     
 
     # 4. Calculate Sklearn Metrics
@@ -115,6 +124,8 @@ def main():
     X_test, y_test = data_loader.pre_processing_data(X_test_raw, y_test_raw)
 
     # we loaded the dataset, now load the model
+    # the model_path is simply the file containing the deserialised weights and biases dictionary 
+    # load model, loads the weights and also injects or sets onto the model and returns the smart model
     print(f"Loading model from {args.model_path}...")
     model = load_model(args.model_path, args) # this loads the smart model in model, we need to evaluate this
     

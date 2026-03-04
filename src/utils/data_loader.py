@@ -7,11 +7,22 @@ from sklearn.datasets import fetch_openml
 import numpy as np
 from sklearn.model_selection import train_test_split
 
+import os
+
 def load_data(dataset_name):
-    #mnist_784 means flattened 
+    cache_file = f"src/{dataset_name}_cache.npz"
+    
+    # 1. Very fast loading from local disk cache if available
+    if os.path.exists(cache_file):
+        print(f"Loading {dataset_name} from local cache...")
+        data = np.load(cache_file)
+        return data['X_train'], data['y_train'], data['X_test'], data['y_test']
+        
+    print(f"Downloading {dataset_name} from internet (this will only happen once)...")
+    
+    # 2. Otherwise download and parse with OpenML
     if dataset_name == 'mnist':
-        mnist= fetch_openml('mnist_784', version=1,parser= "liac-arff", as_frame=False) # this will download the MNIST dataset and return the data and labels as numpy arrays, where data is of shape (70000, 784) and labels is of shape (70000,)
-    # dont want frames but want numpy arrays
+        mnist= fetch_openml('mnist_784', version=1,parser= "liac-arff", as_frame=False) 
         X,y = mnist.data, mnist.target
         X = X.astype(np.float64)
         y = y.astype(np.uint8)
@@ -23,11 +34,12 @@ def load_data(dataset_name):
         y = y.astype(np.uint8)
 
     # Split the data into training and testing sets
-    # Setting a random_state ensures reproducibility of the split
-    # 'stratify=y' ensures that the class distribution ratio is maintained at the overall datset in training and testing
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.1, random_state=42, stratify=y
     )
+    
+    # 3. Save to local disk cache for future runs (saves hundreds of MBs of RAM and huge amounts of time)
+    np.savez_compressed(cache_file, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
 
     return X_train, y_train, X_test, y_test
 

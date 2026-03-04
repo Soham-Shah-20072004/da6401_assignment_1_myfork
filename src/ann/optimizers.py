@@ -131,8 +131,49 @@ class Adam:
             layer.bias -= self.learning_rate * m_hat_b / (np.sqrt(v_hat_b) + self.epsilon)
 
 class Nadam:
-    # to be implemented
-    pass
+    def __init__(self, learning_rate=0.01, weight_decay=0.0, beta1=0.9, beta2=0.999):
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = 1e-8
+        self.m_w = {}
+        self.v_w = {}
+        self.m_b = {}
+        self.v_b = {}
+        self.t = 0 # time step counter for bias correction
+
+    def update(self, layers):
+        self.t += 1
+        for i,layer in enumerate(layers):
+            if i not in self.m_w:
+                self.m_w[i] = np.zeros_like(layer.W)
+                self.v_w[i] = np.zeros_like(layer.W)
+                self.m_b[i] = np.zeros_like(layer.bias)
+                self.v_b[i] = np.zeros_like(layer.bias)
+
+            # apply weight decay
+            layer.grad_W += self.weight_decay * layer.W
+
+            # Update first moment (m_t)
+            self.m_w[i] = self.beta1 * self.m_w[i] + (1 - self.beta1) * layer.grad_W
+            self.m_b[i] = self.beta1 * self.m_b[i] + (1 - self.beta1) * layer.grad_b
+
+            # Update second moment (v_t)
+            self.v_w[i] = self.beta2 * self.v_w[i] + (1 - self.beta2) * (layer.grad_W ** 2)
+            self.v_b[i] = self.beta2 * self.v_b[i] + (1 - self.beta2) * (layer.grad_b ** 2)
+            
+            # Compute bias-corrected second raw moment estimate (v_hat_t)
+            v_hat_w = self.v_w[i] / (1 - self.beta2 ** self.t)
+            v_hat_b = self.v_b[i] / (1 - self.beta2 ** self.t)
+
+            # Compute look-ahead bias-corrected first moment estimate (m_hat_t star)
+            m_hat_star_w = (self.beta1 * self.m_w[i] / (1 - self.beta1 ** (self.t + 1))) + ((1 - self.beta1) * layer.grad_W / (1 - self.beta1 ** self.t))
+            m_hat_star_b = (self.beta1 * self.m_b[i] / (1 - self.beta1 ** (self.t + 1))) + ((1 - self.beta1) * layer.grad_b / (1 - self.beta1 ** self.t))
+
+            # Update weights and bias using Nadam update rule
+            layer.W -= self.learning_rate * m_hat_star_w / (np.sqrt(v_hat_w) + self.epsilon)
+            layer.bias -= self.learning_rate * m_hat_star_b / (np.sqrt(v_hat_b) + self.epsilon)
 
 class RMSprop:
     # to be implemented

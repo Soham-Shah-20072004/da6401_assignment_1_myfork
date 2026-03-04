@@ -19,7 +19,7 @@ class Layer:
             self.W = np.zeros((layer_size, input_size)) 
             # this will give us a 3D, where 3rd dimension is over batch size-- though the 3rd dimension it is the first dimension in shape tuple
         elif weight_init == 'random':
-            self.W = np.random.rand(layer_size, input_size)  # intializes random weights within 0 and 1
+            self.W = np.random.randn(layer_size, input_size) * 0.01  # Zero-centered standard normal, scaled down
         elif weight_init == 'xavier':
             # i learned now that Nout in Xaviers refers to current layer not the last output layer
             std_dev = np.sqrt(2 / (self.input_size + self.layer_size))

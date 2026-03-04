@@ -50,10 +50,12 @@ import argparse
 import os
 import pickle
 import wandb
+import numpy as np
 
-# Import your custom modules
-from src.ann.neural_network import NeuralNetwork
-from src.utils.data_loader import load_data, pre_processing_data
+# Import network module
+from ann.neural_network import NeuralNetwork
+# importing helper functiond from utilities
+from utils.data_loader import load_data, pre_processing_data
 
 def parse_arguments():
     """
@@ -62,23 +64,23 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Train a neural network')
     
     # Dataset and Training Hyperparameters
-    parser.add_argument('--dataset', type=str, choices=['mnist', 'fashion_mnist'], default='mnist', help="Dataset to train on")
-    parser.add_argument('--epochs', type=int, default=10, help="Number of training epochs")
-    parser.add_argument('--batch_size', type=int, default=32, help="Mini-batch size")
-    parser.add_argument('--learning_rate', type=float, default=0.001, help="Learning rate for optimizer")
-    parser.add_argument('--optimizer', type=str, choices=['sgd', 'momentum', 'nag', 'rmsprop', 'adam', 'nadam'], default='adam', help="Optimizer choice")
+    parser.add_argument('-d','--dataset', type=str, choices=['mnist', 'fashion_mnist'], default='mnist', help="Dataset to train on")
+    parser.add_argument('-e','--epochs', type=int, default=10, help="Number of training epochs")
+    parser.add_argument('-b','--batch_size', type=int, default=32, help="Mini-batch size")
+    parser.add_argument('-lr','--learning_rate', type=float, default=0.001, help="Learning rate for optimizer")
+    parser.add_argument('-wd','--weight_decay', type=float, default=0.0, help="Weight decay")
+    parser.add_argument('-o','--optimizer', type=str, choices=['sgd', 'momentum', 'nag', 'rmsprop', 'adam', 'nadam'], default='adam', help="Optimizer choice")
     
     # Network Architecture
-    # Note: We treat hidden_layers as the integer count, and num_neurons as the list of sizes
-    parser.add_argument('--hidden_layers', type=int, default=1, help="Number of hidden layers")
-    parser.add_argument('--num_neurons', type=int, nargs='+', default=[128], help="List of hidden layer sizes (space-separated)")
-    parser.add_argument('--activation', type=str, choices=['relu', 'sigmoid', 'tanh'], default='relu', help="Activation function")
-    parser.add_argument('--loss', type=str, choices=['cross_entropy', 'mse'], default='cross_entropy', help="Loss function")
-    parser.add_argument('--weight_init', type=str, choices=['random', 'xavier'], default='xavier', help="Weight initialization method")
+    parser.add_argument('-nhl','--num_layers', type=int, default=1, help="Number of hidden layers")
+    parser.add_argument('-sz','--hidden_size', type=int,nargs='+', default=[128], help="List of hidden layer sizes (space-separated)")
+    parser.add_argument('-a','--activation', type=str, choices=['relu', 'sigmoid', 'tanh'], default='relu', help="Activation function")
+    parser.add_argument('-l','--loss', type=str, choices=['cross_entropy', 'mse'], default='cross_entropy', help="Loss function")
+    parser.add_argument('-w_i','--weight_init', type=str, choices=['random', 'xavier'], default='xavier', help="Weight initialization method")
     
     # Tracking and Saving
-    parser.add_argument('--wandb_project', type=str, default='mlp-from-scratch', help="W&B project name")
-    parser.add_argument('--model_save_path', type=str, default='models/trained_weights.pkl', help="Relative path to save trained model")
+    parser.add_argument('-w_p','--wandb_project', type=str, default='mlp-from-scratch', help="W&B project name")
+    parser.add_argument('--model_save_path', type=str, default='src/best_model.npy', help="Relative path to save trained model")
     
     return parser.parse_args()
 
@@ -89,10 +91,20 @@ def main():
     """
     # 1. Parse the arguments from the terminal
     args = parse_arguments()
+
+    # python train.py -sz 128 64 32 -e 20 -o momentum -d mnist, if i pass it in this way nargs='+' will work.
     
     # Validation check: Ensure the list of neuron sizes matches the number of hidden layers
-    if len(args.num_neurons) != args.hidden_layers:
-        raise ValueError(f"Error: --hidden_layers is {args.hidden_layers}, but --num_neurons has {len(args.num_neurons)} values.")
+    # HOWEVER, I NEED TO CHECK FOR THIS !!
+
+    # W&B Sweep sends 'hidden_size' as a single scalar integer. We must cast it to a list
+    # of that integer repeated `num_layers` times so the NeuralNetwork can parse it.
+    if len(args.hidden_size) == 1 and args.num_layers > 1:
+        args.hidden_size = args.hidden_size * args.num_layers
+        print(f"Auto-expanded hidden_size to {args.hidden_size} to match num_layers={args.num_layers}")
+        
+    if len(args.hidden_size) != args.num_layers:
+        raise ValueError(f"Error: --num_layers is {args.num_layers}, but --hidden_size has {len(args.hidden_size)} values.")
 
     # 2. Initialize Weights & Biases (wandb)
     print(f"Initializing W&B Project: {args.wandb_project}...")
@@ -106,7 +118,7 @@ def main():
     X_test, y_test = pre_processing_data(X_test_raw, y_test_raw)
     
     # 4. Build the Neural Network
-    print(f"Building network with {args.hidden_layers} hidden layer(s)...")
+    print(f"Building network with {args.num_layers} hidden layer(s)...")
     model = NeuralNetwork(cli_args=args)
     
     # 5. Execute Training Loop
@@ -127,11 +139,16 @@ def main():
     save_dir = os.path.dirname(args.model_save_path)
     if save_dir and not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    
     # SAVE THE MODEL WEIGHTS AS BEST WEIGHTS AND BEST MODEL.npy file
-    # Dump the fully trained memory banks (weights and biases) to disk
-    with open(args.model_save_path, 'wb') as f:
-        pickle.dump({'layers': model.layers}, f)
+    # this is SERIALIZATION . in inference, we will deserialize this best model file to inject the weights. for that we have defined method of network named set_weights().
+    print(f"Extracting weights and saving serialised weights to src/best_model.npy...")
+    best_weights = model.get_weights()
+    np.save(args.model_save_path, best_weights) # serialised weights, saved as .npy file, instead of prev .pkl file
+    
+    print(f"Saving hyperparameter config to src/best_config.json...")
+    import json
+    with open('src/best_config.json', 'w') as f:
+        json.dump(vars(args), f, indent=4)
         
     # Close the wandb tracking instance
     wandb.finish()

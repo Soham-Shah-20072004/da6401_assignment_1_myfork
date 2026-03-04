@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VSCode settings
+.vscode/
+
+# Weights & Biases
+wandb/
+
+# NumPy objects
+*.npy
+
+# OS generated files
+.DS_Store
