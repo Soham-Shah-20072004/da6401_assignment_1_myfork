@@ -5,7 +5,7 @@ A configurable, modular Multi-Layer Perceptron (MLP) built from scratch using on
 ## Links
 
 - **GitHub Repository**: [https://github.com/Soham-Shah-20072004/da6401_assignment_1_myfork](https://github.com/Soham-Shah-20072004/da6401_assignment_1_myfork)
-- **W&B Report**: https://wandb.ai/aiml_sohamshah-indian-institute-of-technology-madras/da6401_assignment_1_myfork-src/reports/W-B-REPORT-ME22B191--VmlldzoxNjEyNTUwNQ?accessToken=9ot64y8v8i721yie7b5bmev3usjuac8zxmqo774okibi50ku1uz04y34ule93imv
+- **W&B Report**: https://api.wandb.ai/links/aiml_sohamshah-indian-institute-of-technology-madras/nwiu6zm0
 
 ## Installation & Usage
 

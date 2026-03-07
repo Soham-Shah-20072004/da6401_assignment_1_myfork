@@ -39,7 +39,7 @@ def parse_arguments():
     
     # Tracking and Saving
     parser.add_argument('-w_p','--wandb_project', type=str, default='da6401_assignment_1_myfork-src', help="W&B project name")
-    parser.add_argument('--model_save_path', type=str, default='src/best_model.npy', help="Relative path to save trained model")
+    parser.add_argument('--model_save_path', type=str, default='src/trained_model.npy', help="Relative path to save trained model (use src/best_model.npy to update the best model)")
     
     return parser.parse_args()
 
@@ -48,12 +48,9 @@ def main():
     """
     Main training function.
     """
-    # 1. Parse the arguments from the terminal
     args = parse_arguments()
-
-    # python train.py -sz 128 64 32 -e 20 -o momentum -d mnist, if i pass it in this way nargs='+' will work.
     
-    # Normalize loss name - support both 'mse' and 'mean_squared_error'
+    # loss
     if args.loss == 'mean_squared_error':
         args.loss = 'mse'
     
@@ -68,22 +65,31 @@ def main():
     if len(args.hidden_size) != args.num_layers:
         raise ValueError(f"Error: --num_layers is {args.num_layers}, but --hidden_size has {len(args.hidden_size)} values.")
 
-    # 3. Load and Preprocess Data
+    # Load and Preprocess Data
     print(f"Loading and preprocessing {args.dataset} dataset...")
     X_train_raw, y_train_raw, X_test_raw, y_test_raw = load_data(args.dataset)
     
     X_train, y_train = pre_processing_data(X_train_raw, y_train_raw)
     X_test, y_test = pre_processing_data(X_test_raw, y_test_raw)
 
-    # 2. Initialize Weights & Biases (wandb)
+    # Initialize Weights & Biases (wandb)
     print(f"Initializing W&B Project: {args.wandb_project}...")
-    wandb.init(project=args.wandb_project, config=vars(args))
+    # Fall back to offline mode when no API key is present (e.g., autograder environment)
+    # This prevents wandb.init() from hanging on network calls without credentials.
+    import os
+    if not os.environ.get('WANDB_API_KEY') and not os.environ.get('WANDB_MODE'):
+        os.environ['WANDB_MODE'] = 'offline'
+    try:
+        wandb.init(project=args.wandb_project, config=vars(args))
+    except Exception as e:
+        print(f"W&B init failed ({e}), falling back to disabled mode.")
+        wandb.init(project=args.wandb_project, config=vars(args), mode='disabled')
     
-    # 4. Build the Neural Network
+    # Build the Neural Network
     print(f"Building network with {args.num_layers} hidden layer(s)...")
     model = NeuralNetwork(cli_args=args)
     
-    # 5. Execute Training Loop
+    # Execute Training Loop
     print("Starting training...")
     list_of_epoch_loss = model.train(
         X_train=X_train, 
@@ -94,7 +100,7 @@ def main():
         y_val=y_test
     )
     
-    # 6. Save the Trained Model safely
+    # Save the Trained Model
     print(f"Saving model to {args.model_save_path}...")
     
     # Create the folder directory (e.g., 'models/') if it doesn't exist yet

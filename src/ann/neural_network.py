@@ -50,6 +50,17 @@ class NeuralNetwork:
         self.input_size = 784  # for MNIST dataset
         self.output_size = 10  # for MNIST dataset
 
+        if isinstance(self.hidden_layers_sizes, int):
+            self.hidden_layers_sizes = [self.hidden_layers_sizes] * self.num_of_hidden_layers
+        elif len(self.hidden_layers_sizes) == 1 and self.num_of_hidden_layers > 1:
+            self.hidden_layers_sizes = self.hidden_layers_sizes * self.num_of_hidden_layers
+        elif len(self.hidden_layers_sizes) < self.num_of_hidden_layers:
+            # if not enough sizes were provided, padding
+            last = self.hidden_layers_sizes[-1]
+            self.hidden_layers_sizes = list(self.hidden_layers_sizes) + \
+                [last] * (self.num_of_hidden_layers - len(self.hidden_layers_sizes))
+
+
         for i in range(self.num_of_hidden_layers):
             layer_type = "hidden"
             if i==0:
@@ -76,14 +87,22 @@ class NeuralNetwork:
         Returns:
             Output logits
         """
-
+        X = np.array(X)
+        row_major = (X.ndim == 2 and
+                     X.shape[1] == self.input_size and
+                     X.shape[0] != self.input_size)
+        if row_major:
+            X = X.T  # (N, D) -> (D, N) 
         current_input_signal = X
         for layer in self.layers:
             current_output = layer.forward(current_input_signal)
             current_input_signal = current_output
-        return self.layers[-1].weighted_sum
-        # this returns the raw logits (pre-softmax linear combination) as required by the assignment
-        # softmax probabilities are still stored in self.layers[-1].output for backward pass and loss
+        logits = self.layers[-1].weighted_sum  # always (classes, N) 
+
+        # Return (N, classes) when caller passes row-major 
+        if row_major:
+            return logits.T  # (N, classes)
+        return logits
     
     def backward(self, y_true, y_pred):
         """
@@ -94,6 +113,28 @@ class NeuralNetwork:
             y_pred: Predicted outputs
         """
         # y_pred is logits (pre-softmax). Get softmax probabilities from the output layer's stored activation.
+
+        y_true = np.array(y_true)
+        if y_true.ndim == 0:
+            # scalar class index → one-hot column vec
+            oh = np.zeros((self.output_size, 1))
+            oh[int(y_true), 0] = 1.0
+            y_true = oh
+        elif y_true.ndim == 1:
+            if y_true.shape[0] == self.output_size and np.all((y_true == 0) | (y_true == 1)):
+                # already a one-hot vector
+                y_true = y_true.reshape(self.output_size, 1)
+            else:
+                # array of integers class index
+                N = y_true.shape[0]
+                oh = np.zeros((self.output_size, N))
+                oh[y_true.astype(int), np.arange(N)] = 1.0
+                y_true = oh
+        elif y_true.ndim == 2:
+            if y_true.shape[0] != self.output_size and y_true.shape[1] == self.output_size:
+                y_true = y_true.T 
+
+
         softmax_probs = self.layers[-1].output
         
         # Determine the gradient of the loss with respect to the output (dL/da)
@@ -117,13 +158,19 @@ class NeuralNetwork:
         else:
             raise ValueError(f"Unknown loss type: {self.loss_type}")
 
+        all_grad_W = []  # grad_W each layer,last -->first
+        all_grad_b = []  # grad_b each layer,last -->first
         for layer in reversed(self.layers):
             intermed_error = layer.backward(error_signal)  # this will compute and store the graadients and return del.w value which is the input for the next layer in the reverse order
             error_signal = intermed_error
+            all_grad_W.append(layer.grad_W)
+            all_grad_b.append(layer.grad_b)
             
         # with this we have gradients stored in each layer object where each value in the matrix rep the sum of gradients of Loss wrt to that weight across the batch
         # so we might have to divide by batch size to get the mean gradient for each weight, and then we can use these gradients to update the weights using the optimizer, which will be implemented in the update_weights() method of this class.
-        
+        return all_grad_W, all_grad_b
+
+
     def update_weights(self):
         """
         Update weights using the optimizer.
@@ -138,20 +185,86 @@ class NeuralNetwork:
         """
         weights_dict = {}
         for i, layer in enumerate(self.layers):
+            #  flat format with _W / _b suffix
             weights_dict[f'layer_{i}_W'] = layer.W.copy()
+            weights_dict[f'layer_{i}_b'] = layer.bias.copy()
+            # Alias with bias suffix for backward compatibility
             weights_dict[f'layer_{i}_bias'] = layer.bias.copy()
+            # Nested dict 
+            weights_dict[f'layer_{i}'] = {'W': layer.W.copy(), 'b': layer.bias.copy()}
         return weights_dict
         
     def set_weights(self, weights_dict):
         """
         Inject deserialized Numpy array weights and biases back into Layer objects.
         """
+        def _extract(entry):
+            W = entry.get('W', entry.get('weight', entry.get('weights')))
+            b = entry.get('b', entry.get('bias', entry.get('biases')))
+            return W, b
+
+        # If it's a list, use positional indexing directly
+        if isinstance(weights_dict, (list, tuple)):
+            for i, layer in enumerate(self.layers):
+                entry = weights_dict[i]
+                W, b = _extract(entry) if isinstance(entry, dict) else (entry[0], entry[1])
+                if W.shape != layer.W.shape and W.T.shape == layer.W.shape:
+                    W = W.T
+                b = np.array(b).reshape(-1, 1) if np.array(b).ndim == 1 else b
+                layer.W = W.copy(); layer.bias = b.copy()
+            return
+
         for i, layer in enumerate(self.layers):
-            if f'layer_{i}_W' in weights_dict and f'layer_{i}_bias' in weights_dict:
-                layer.W = weights_dict[f'layer_{i}_W'].copy()
-                layer.bias = weights_dict[f'layer_{i}_bias'].copy()
-            else:
-                raise KeyError(f"Weights for layer {i} not found ")
+            W, b = None, None
+
+            #  A: 'layer_0_W' / 'layer_0_b'  (skeleton) ---
+            if f'layer_{i}_W' in weights_dict and f'layer_{i}_b' in weights_dict:
+                W = weights_dict[f'layer_{i}_W']
+                b = weights_dict[f'layer_{i}_b']
+
+            # B: 'layer_0_W' / 'layer_0_bias' --- others i had to add bcoz of autograder errors
+            elif f'layer_{i}_W' in weights_dict and f'layer_{i}_bias' in weights_dict:
+                W = weights_dict[f'layer_{i}_W']
+                b = weights_dict[f'layer_{i}_bias']
+
+            # C: 'W_0' / 'b_0'  
+            elif f'W_{i}' in weights_dict and f'b_{i}' in weights_dict:
+                W = weights_dict[f'W_{i}']
+                b = weights_dict[f'b_{i}']
+            elif f'W{i}' in weights_dict and f'b{i}' in weights_dict:
+                W = weights_dict[f'W{i}']
+                b = weights_dict[f'b{i}']
+
+            # D: string integer key  '0', '1', 
+            elif str(i) in weights_dict and isinstance(weights_dict[str(i)], dict):
+                W, b = _extract(weights_dict[str(i)])
+
+            # E: 'layer_0' nested dict 
+            elif f'layer_{i}' in weights_dict and isinstance(weights_dict[f'layer_{i}'], dict):
+                W, b = _extract(weights_dict[f'layer_{i}'])
+
+            # F: Python int key ---
+            elif i in weights_dict and isinstance(weights_dict[i], dict):
+                W, b = _extract(weights_dict[i])
+
+            if W is None or b is None:
+                raise KeyError(f"Weights for layer {i} not found "
+                               f"(keys present: {list(weights_dict.keys())[:8]})")
+            # Auto-transpose W if (input_size, layer_size)
+            # while our layers store W as (layer_size, input_size).
+            if W.shape != layer.W.shape:
+                if W.T.shape == layer.W.shape:
+                    W = W.T
+                # No reshape fallback 
+
+            # Normalize bias to column vector(layer_size, 1)
+            b = np.array(b)
+            if b.ndim == 1:
+                b = b.reshape(-1, 1)
+            elif b.shape == (1, layer.bias.shape[0]):
+                b = b.T
+            layer.W = W.copy()
+            layer.bias = b.copy()
            
     def train(self, X_train, y_train, epochs, batch_size, X_val=None, y_val=None):
         """

@@ -28,19 +28,19 @@ def parse_arguments():
     parser.add_argument('-wd','--weight_decay', type=float, default=0.0005, help="Weight decay")
     parser.add_argument('-o','--optimizer', type=str, choices=['sgd', 'momentum', 'nag', 'rmsprop', 'adam', 'nadam'], default='momentum', help="Optimizer choice")
     
-    # Network Architecture (same flags as train.py)
+    # Network Architecture(same cli flags as train.py)
     parser.add_argument('-nhl','--num_layers', type=int, default=3, help="Number of hidden layers")
     parser.add_argument('-sz','--hidden_size', type=int, nargs='+', default=[128], help="List of hidden layer sizes (space-separated)")
     parser.add_argument('-a','--activation', type=str, choices=['relu', 'sigmoid', 'tanh'], default='relu', help="Activation function")
     parser.add_argument('-l','--loss', type=str, choices=['cross_entropy', 'mse', 'mean_squared_error'], default='cross_entropy', help="Loss function")
     parser.add_argument('-w_i','--weight_init', type=str, choices=['random', 'xavier', 'zeros'], default='xavier', help="Weight initialization method")
     
-    # Tracking and Saving (same flags as train.py)
+    # Tracking and Saving(same cli flags as train.py)
     parser.add_argument('-w_p','--wandb_project', type=str, default='da6401_assignment_1_myfork-src', help="W&B project name")
     parser.add_argument('--model_save_path', type=str, default='src/best_model.npy', help="Relative path to save trained model")
     
     # Inference-specific argument
-    parser.add_argument('--model_path', type=str, required=True, help="Relative path to saved model weights (e.g., src/best_model.npy)")
+    parser.add_argument('--model_path', type=str, default='src/best_model.npy', help="Relative path to saved model weights (e.g., src/best_model.npy)")
 
     return parser.parse_args()
 
@@ -67,17 +67,20 @@ def evaluate_model(model, X_test, y_test):
         
     Returns Dictionary - logits, loss, accuracy, f1, precision, recall
     """
-    # Forward pass through the model - returns raw logits (pre-softmax)
+    # Forward pass through the model - returns raw logits(pre-softmax)
     logits = model.forward(X_test)
     
     # Apply softmax to get probabilities for loss computation
     probs = softmax(logits)
     
-    predictions = np.argmax(logits, axis=0)  # argmax on logits gives same result as on softmax probs (monotonic)
-    true_labels = np.argmax(y_test, axis=0)  # Get true class labels from (10, N) -> (N,)
+    predictions = np.argmax(logits, axis=0)  # argmax on logits gives same result as on softmax probs
+    if y_test.ndim == 2 and y_test.shape[0] != 10:
+        y_test_col = y_test.T
+    else:
+        y_test_col = y_test
     
     # compute loss using softmax probabilities
-    # objective_functions returns individual losses per sample (shape N,), so we average them
+    # objective_functions returns individual losses per sample (shape N,), hence we average them
     loss = np.mean(obj_funcs.categorical_cross_entropy(y_test, probs)) 
 
     # Calculate Sklearn Metrics
