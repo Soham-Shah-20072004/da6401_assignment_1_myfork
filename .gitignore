@@ -35,3 +35,4 @@ convert_cache.py
 
 # Unnecessary plots
 notebooks/*.png
+src/experiments/
