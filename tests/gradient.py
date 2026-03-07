@@ -61,16 +61,17 @@ epsilon = 1e-5
 numerical_grad = np.zeros_like(layer.W)
 
 from ann import objective_functions
+from ann.activations import softmax
 
 for i in range(layer.W.shape[0]):
     for j in range(layer.W.shape[1]):
         original = layer.W[i, j]
 
         layer.W[i, j] = original + epsilon
-        plus_loss = np.mean(objective_functions.categorical_cross_entropy(y, model.forward(X)))
+        plus_loss = np.mean(objective_functions.categorical_cross_entropy(y, softmax(model.forward(X))))
 
         layer.W[i, j] = original - epsilon
-        minus_loss = np.mean(objective_functions.categorical_cross_entropy(y, model.forward(X)))
+        minus_loss = np.mean(objective_functions.categorical_cross_entropy(y, softmax(model.forward(X))))
 
         numerical_grad[i, j] = (plus_loss - minus_loss) / (2 * epsilon)
 

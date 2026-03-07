@@ -7,6 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 import numpy as np
 from ann.neural_network import NeuralNetwork
 from ann import objective_functions
+from ann.activations import softmax
 from utils import data_loader
 
 def test_combination(opt_name, loss_fn):
@@ -30,21 +31,23 @@ def test_combination(opt_name, loss_fn):
     y_dummy = ten_ten_identity[y_dummy_raw].T 
     
     initial_logits = model.forward(X_dummy)
+    initial_probs = softmax(initial_logits)
     if loss_fn == 'cross_entropy':
-        initial_loss = np.mean(objective_functions.categorical_cross_entropy(y_dummy, initial_logits))
+        initial_loss = np.mean(objective_functions.categorical_cross_entropy(y_dummy, initial_probs))
     else:
-        initial_loss = np.mean(objective_functions.mse(y_dummy, initial_logits))
+        initial_loss = np.mean(objective_functions.mse(y_dummy, initial_probs))
         
     for epoch in range(50):
         pred = model.forward(X_dummy)
         model.backward(y_dummy, pred)
         model.update_weights()
         
-    final_pred = model.forward(X_dummy)
+    final_logits = model.forward(X_dummy)
+    final_probs = softmax(final_logits)
     if loss_fn == 'cross_entropy':
-        final_loss = np.mean(objective_functions.categorical_cross_entropy(y_dummy, final_pred))
+        final_loss = np.mean(objective_functions.categorical_cross_entropy(y_dummy, final_probs))
     else:
-        final_loss = np.mean(objective_functions.mse(y_dummy, final_pred))
+        final_loss = np.mean(objective_functions.mse(y_dummy, final_probs))
         
     return initial_loss, final_loss
 

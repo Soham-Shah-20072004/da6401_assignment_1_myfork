@@ -9,69 +9,55 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from sklearn.metrics import confusion_matrix as cm
 from ann.neural_network import NeuralNetwork
 import ann.objective_functions as obj_funcs
+from ann.activations import softmax
 import utils.data_loader as data_loader
 
 
 def parse_arguments():
     """
     Parse command-line arguments for inference.
-    
-    TODO: Implement argparse with:
-    - model_path: Path to saved model weights(do not give absolute path, rather provide relative path)
-    - dataset: Dataset to evaluate on
-    - batch_size: Batch size for inference
-    - hidden_layers: List of hidden layer sizes
-    - num_neurons: Number of neurons in hidden layers
-    - activation: Activation function ('relu', 'sigmoid', 'tanh')
+    CLI matches train.py exactly (as required by the assignment), plus --model_path for loading saved weights.
     """
     parser = argparse.ArgumentParser(description='Run inference on test set')
-    # Core inference arguments
-    parser.add_argument('--model_path', type=str, required=True, help="please give relative path to saved model weights (e.g., src/best_model.npy)")
-    parser.add_argument('--dataset', type=str, choices=['mnist', 'fashion_mnist'], default='mnist', help="choose the Dataset to evaluate on")
-    parser.add_argument('--batch_size', type=int, default=32, help="choose the batch size for inference")
     
-    # Architecture arguments to rebuild the empty shell
-    parser.add_argument('--hidden_layers', type=int, default=1, help="Number of hidden layers")
-    parser.add_argument('--num_neurons', type=int, nargs='+', default=[128], help="List of hidden layer sizes")
-    parser.add_argument('--activation', type=str, choices=['relu', 'sigmoid', 'tanh'], default='relu', help="choose activation function used during training")
-    parser.add_argument('--num_layers', type=int, default=1, help="Number of hidden layers (same as hidden_layers, but needed for initializing the empty shell)")
-    parser.add_argument('--hidden_size', type=int, nargs='+', default=[128], help="List of hidden layer sizes")  
+    # Dataset and Training Hyperparameters (same flags as train.py)
+    parser.add_argument('-d','--dataset', type=str, choices=['mnist', 'fashion_mnist'], default='mnist', help="Dataset to evaluate on")
+    parser.add_argument('-e','--epochs', type=int, default=10, help="Number of training epochs")
+    parser.add_argument('-b','--batch_size', type=int, default=64, help="Mini-batch size")
+    parser.add_argument('-lr','--learning_rate', type=float, default=0.01, help="Learning rate for optimizer")
+    parser.add_argument('-wd','--weight_decay', type=float, default=0.0005, help="Weight decay")
+    parser.add_argument('-o','--optimizer', type=str, choices=['sgd', 'momentum', 'nag', 'rmsprop', 'adam', 'nadam'], default='momentum', help="Optimizer choice")
+    
+    # Network Architecture (same flags as train.py)
+    parser.add_argument('-nhl','--num_layers', type=int, default=3, help="Number of hidden layers")
+    parser.add_argument('-sz','--hidden_size', type=int, nargs='+', default=[128], help="List of hidden layer sizes (space-separated)")
+    parser.add_argument('-a','--activation', type=str, choices=['relu', 'sigmoid', 'tanh'], default='relu', help="Activation function")
+    parser.add_argument('-l','--loss', type=str, choices=['cross_entropy', 'mse', 'mean_squared_error'], default='cross_entropy', help="Loss function")
+    parser.add_argument('-w_i','--weight_init', type=str, choices=['random', 'xavier', 'zeros'], default='xavier', help="Weight initialization method")
+    
+    # Tracking and Saving (same flags as train.py)
+    parser.add_argument('-w_p','--wandb_project', type=str, default='da6401_assignment_1_myfork-src', help="W&B project name")
+    parser.add_argument('--model_save_path', type=str, default='src/best_model.npy', help="Relative path to save trained model")
+    
+    # Inference-specific argument
+    parser.add_argument('--model_path', type=str, required=True, help="Relative path to saved model weights (e.g., src/best_model.npy)")
 
     return parser.parse_args()
 
 def load_model(model_path, args):
     """
     Load trained model from disk.
+    Uses the same CLI args structure as train.py to rebuild the network shell,
+    then injects the saved weights via deserialization.
     """
-    # model path is the path to saved weights file(pkl file)
-    # Create a dummy object to mimic the terminal args your __init__ expects
-    class DummyArgs:
-        loss = 'cross_entropy'
-        optimizer = 'sgd' # no need, Ignored during inference, but needed to initalize the empty neural network
-        num_layers = args.num_layers
-        
-        # Ensure hidden_size is a list, cast it if it is a single integer
-        hidden_sizes_list = args.hidden_size
-        if isinstance(hidden_sizes_list, int):
-            hidden_sizes_list = [hidden_sizes_list] * args.num_layers
-            
-        hidden_size = hidden_sizes_list
-        activation = args.activation
-        weight_init = 'random'
-        learning_rate = 0.01
-        weight_decay = 0.0
-    
-    # build the empty shell
-    model = NeuralNetwork(DummyArgs())
+    # build the empty shell network using CLI args (same structure as train.py)
+    model = NeuralNetwork(args)
 
-    # load the saved weights
-    # this is DESERIALIZATION . and inject into this empty placeholder model
+    # load the saved weights and inject into this empty placeholder model
+    # this is DESERIALIZATION - we load serialised weights from .npy file
     saved_weights = np.load(model_path, allow_pickle=True).item()
     model.set_weights(saved_weights)
-    # these saved_weights are simply the weights and biases of each layer
-    # fundamentally it could be a layer object (smart/trained layers object list)
-
-    # now this model is a smart model
+    # now this model is a smart model with trained weights
     return model
 
 
@@ -79,21 +65,22 @@ def evaluate_model(model, X_test, y_test):
     """
     Evaluate model on test data.
         
-    TODO: Return Dictionary - logits, loss, accuracy, f1, precision, recall
-
+    Returns Dictionary - logits, loss, accuracy, f1, precision, recall
     """
-
-    # Forward pass through the model
-    logits = model.forward(X_test)  
-    predictions = np.argmax(logits, axis=0)  # Get predicted class labels
+    # Forward pass through the model - returns raw logits (pre-softmax)
+    logits = model.forward(X_test)
+    
+    # Apply softmax to get probabilities for loss computation
+    probs = softmax(logits)
+    
+    predictions = np.argmax(logits, axis=0)  # argmax on logits gives same result as on softmax probs (monotonic)
     true_labels = np.argmax(y_test, axis=0)  # Get true class labels from (10, N) -> (N,)
     
-    # compute loss using the categorical cross entropy function implemented in objective functions file
-    # objective_functions returns individual losses per sample (shape N,), so we average them for the epoch loss
-    loss = np.mean(obj_funcs.categorical_cross_entropy(y_test, logits)) 
-    
+    # compute loss using softmax probabilities
+    # objective_functions returns individual losses per sample (shape N,), so we average them
+    loss = np.mean(obj_funcs.categorical_cross_entropy(y_test, probs)) 
 
-    # 4. Calculate Sklearn Metrics
+    # Calculate Sklearn Metrics
     accuracy = accuracy_score(true_labels, predictions)
     precision = precision_score(true_labels, predictions, average='macro', zero_division=0)
     recall = recall_score(true_labels, predictions, average='macro', zero_division=0)
@@ -115,21 +102,29 @@ def main():
     """
     Main inference function.
 
-    TODO: Must return Dictionary - logits, loss, accuracy, f1, precision, recall
+    Must return Dictionary - logits, loss, accuracy, f1, precision, recall
     """
     args = parse_arguments()
-    print(f"Loading {args.dataset} test data...") # now we start to load the specified dataset
+    
+    # Normalize loss name - support both 'mse' and 'mean_squared_error'
+    if args.loss == 'mean_squared_error':
+        args.loss = 'mse'
+    
+    # W&B Sweep sends 'hidden_size' as a single scalar integer. We must cast it to a list
+    # of that integer repeated `num_layers` times so the NeuralNetwork can parse it.
+    if len(args.hidden_size) == 1 and args.num_layers > 1:
+        args.hidden_size = args.hidden_size * args.num_layers
+    
+    print(f"Loading {args.dataset} test data...")
     # Load test data based on the specified dataset
-    _,_,X_test_raw,y_test_raw = data_loader.load_data(args.dataset) # this will give us the test data and labels, we need to pre process them before feeding into the model for evaluation
+    _,_,X_test_raw,y_test_raw = data_loader.load_data(args.dataset)
     X_test, y_test = data_loader.pre_processing_data(X_test_raw, y_test_raw)
 
-    # we loaded the dataset, now load the model
-    # the model_path is simply the file containing the deserialised weights and biases dictionary 
-    # load model, loads the weights and also injects or sets onto the model and returns the smart model
+    # load model - loads the weights and injects into empty shell, returns the smart model
     print(f"Loading model from {args.model_path}...")
-    model = load_model(args.model_path, args) # this loads the smart model in model, we need to evaluate this
+    model = load_model(args.model_path, args)
     
-    # we evaluate
+    # evaluate the model
     print("Evaluating model and calculating metrics...")
     results_metrics_dict = evaluate_model(model, X_test, y_test)
 

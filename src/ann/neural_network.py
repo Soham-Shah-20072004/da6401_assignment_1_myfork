@@ -81,8 +81,9 @@ class NeuralNetwork:
         for layer in self.layers:
             current_output = layer.forward(current_input_signal)
             current_input_signal = current_output
-        return current_output
-        # this is the final logits of the output layer (if everythying works fine, this is predicted proabalities for each class for each sample in the batch, so it should be of size (output_size, batch_size)) = y_hat
+        return self.layers[-1].weighted_sum
+        # this returns the raw logits (pre-softmax linear combination) as required by the assignment
+        # softmax probabilities are still stored in self.layers[-1].output for backward pass and loss
     
     def backward(self, y_true, y_pred):
         """
@@ -92,15 +93,18 @@ class NeuralNetwork:
             y_true: True labels
             y_pred: Predicted outputs
         """
+        # y_pred is logits (pre-softmax). Get softmax probabilities from the output layer's stored activation.
+        softmax_probs = self.layers[-1].output
+        
         # Determine the gradient of the loss with respect to the output (dL/da)
         if self.loss_type == 'cross_entropy':
             # The derivative of Categorical Cross Entropy simplifies beautifully with Softmax:
-            # dL/dz = y_pred - y_true
+            # dL/dz = softmax_probs - y_true
             # (Note: This is dL/dz directly, so we don't multiply by activation derivative again)
-            error_signal = y_pred - y_true 
+            error_signal = softmax_probs - y_true 
         elif self.loss_type == 'mse':
             # For MSE, dL/da is the typical derivative
-            dL_da = objective_functions.mse_derivative(y_true, y_pred) 
+            dL_da = objective_functions.mse_derivative(y_true, softmax_probs) 
             
             # Since Softmax output a_i depends on ALL z_j, we must multiply by the Softmax Jacobian:
             # J_ij = a_i * (delta_ij - a_j)
@@ -108,8 +112,8 @@ class NeuralNetwork:
             # dL/dz_i = a_i * dL/da_i - a_i * sum(a_j * dL/da_j)
             
             # This computes the exact exact Jacobian-vector product in vectorized numpy for the entire batch
-            sum_a_dL_da = np.sum(y_pred * dL_da, axis=0, keepdims=True)
-            error_signal = (y_pred * dL_da) - (y_pred * sum_a_dL_da)
+            sum_a_dL_da = np.sum(softmax_probs * dL_da, axis=0, keepdims=True)
+            error_signal = (softmax_probs * dL_da) - (softmax_probs * sum_a_dL_da)
         else:
             raise ValueError(f"Unknown loss type: {self.loss_type}")
 
@@ -161,17 +165,24 @@ class NeuralNetwork:
             number_of_batches = X_train.shape[1] // batch_size
             # but if the number of samples is not perfectly divisible by batch size, then we will have some remaining samples in the last batch, so we need to handle that case as well, we can simply ignore those remaining samples for simplicity, or we can create a smaller batch for those remaining samples, but for now we will ignore those remaining samples for simplicity.
             batch_losses = []
+            correct_train_predictions = 0
             
             for X_batch,y_batch in batch_generator(X_train, y_train, batch_size):               
                 # forward pass
                 batch_pred= self.forward(X_batch)
                 
-            # track the loss per epoch
+                # count correct predictions for training accuracy
+                pred_labels = np.argmax(batch_pred, axis=0)
+                true_labels = np.argmax(y_batch, axis=0)
+                correct_train_predictions += np.sum(pred_labels == true_labels)
+                
+            # track the loss per epoch using softmax probabilities for correct loss calculation
+                softmax_probs = self.layers[-1].output
                 if self.loss_type == 'cross_entropy':
-                    loss = objective_functions.categorical_cross_entropy(y_batch, batch_pred)
+                    loss = objective_functions.categorical_cross_entropy(y_batch, softmax_probs)
                     
                 else: # mse
-                    loss = objective_functions.mse(y_batch, batch_pred)
+                    loss = objective_functions.mse(y_batch, softmax_probs)
                 
                 batch_losses.append(np.mean(loss))# mean loss of the batch 
 
@@ -184,11 +195,12 @@ class NeuralNetwork:
                
                 
             mean_epoch_loss = np.mean(batch_losses)
+            train_accuracy = correct_train_predictions / X_train.shape[1]
             
             # Evaluate on validation set if provided
             if X_val is not None and y_val is not None:
                 val_accuracy, val_loss, val_f1 = self.evaluate(X_val, y_val, verbose=False)
-                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {mean_epoch_loss:.4f} - Val Loss: {val_loss:.4f} - Val Acc: {val_accuracy:.4f} - Val F1: {val_f1:.4f}")
+                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {mean_epoch_loss:.4f} - Train Acc: {train_accuracy:.4f} - Val Loss: {val_loss:.4f} - Val Acc: {val_accuracy:.4f} - Val F1: {val_f1:.4f}")
                 
                 # Check and save best weights based on val F1 score
                 if val_f1 > best_val_f1:
@@ -200,16 +212,18 @@ class NeuralNetwork:
                 wandb.log({
                     "epoch": epoch + 1,
                     "train_loss": mean_epoch_loss,
+                    "train_accuracy": train_accuracy,
                     "val_loss": val_loss,
                     "val_accuracy": val_accuracy,
                     "val_f1": val_f1
                 })
             else:
-                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {mean_epoch_loss:.4f}")
+                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {mean_epoch_loss:.4f} - Train Acc: {train_accuracy:.4f}")
                 self.best_weights = self.get_weights() # If no eval set, best_weights is just the latest weights
                 wandb.log({
                     "epoch": epoch + 1,
-                    "train_loss": mean_epoch_loss
+                    "train_loss": mean_epoch_loss,
+                    "train_accuracy": train_accuracy
                 })
                 
             epoch_loss.append(mean_epoch_loss)
@@ -240,11 +254,12 @@ class NeuralNetwork:
             print(f"Evaluation Accuracy: {accuracy}")
             print(f"Evaluation F1 Score: {f1}")
 
-        # compute loss
+        # compute loss using softmax probabilities from the output layer
+        softmax_probs = self.layers[-1].output
         if self.loss_type == 'cross_entropy':
-            loss = np.mean(objective_functions.categorical_cross_entropy(y, output))
+            loss = np.mean(objective_functions.categorical_cross_entropy(y, softmax_probs))
         else:
-            loss = np.mean(objective_functions.mse(y, output))    
+            loss = np.mean(objective_functions.mse(y, softmax_probs))    
             
         if verbose:
             print(f"Evaluation Loss: {loss}")

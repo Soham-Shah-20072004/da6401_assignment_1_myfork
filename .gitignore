@@ -5,11 +5,33 @@ __pycache__/
 # VSCode settings
 .vscode/
 
+# Ignored Folders
+tests/
+models/
+
 # Weights & Biases
 wandb/
 
 # NumPy objects
 *.npy
+!src/best_model.npy
 
 # OS generated files
 .DS_Store
+
+# Assignment specific text and PDFs
+*.pdf
+assignment_rules.txt
+assignment_text_local.txt
+
+# Dataset dumps and archives
+*.gz
+*.npz
+# Note: .npy is already ignored above
+
+# Extraction scripts
+extract_pdf.py
+convert_cache.py
+
+# Unnecessary plots
+notebooks/*.png

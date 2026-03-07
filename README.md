@@ -1,22 +1,25 @@
 # Assignment 1: Multi-Layer Perceptron for Image Classification
 
-## Overview
+A configurable, modular Multi-Layer Perceptron (MLP) built from scratch using only NumPy.
 
-This assignment requires you to implement a neural network from scratch using only NumPy. You will build all components including layers, activations, optimizers, and loss functions, then train your network on MNIST or Fashion-MNIST datasets.
+## Links
 
-## Learning Objectives
+- **GitHub Repository**: [https://github.com/Soham-Shah-20072004/da6401_assignment_1_myfork](https://github.com/Soham-Shah-20072004/da6401_assignment_1_myfork)
+- **W&B Report**: https://wandb.ai/aiml_sohamshah-indian-institute-of-technology-madras/da6401_assignment_1_myfork-src/reports/W-B-REPORT-ME22B191--VmlldzoxNjEyNTUwNQ?accessToken=9ot64y8v8i721yie7b5bmev3usjuac8zxmqo774okibi50ku1uz04y34ule93imv
 
-- Understand forward and backward propagation
-- Implement gradient computation manually
-- Implement various optimizers (SGD, Momentum, Adam, Nadam)
-- Work with activation functions and their derivatives
-- Train and evaluate neural networks
-- Log experiments using Weights & Biases
+## Installation & Usage
 
-## Contact
+1. **Install requirements:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-For questions or issues, please contact the teaching staff or post on the course forum.
+2. **Train a model:**
+   ```bash
+   python src/train.py
+   ```
 
----
-
-Good luck with your implementation!
+3. **Run inference:**
+   ```bash
+   python src/inference.py --model_path src/best_model.npy
+   ```

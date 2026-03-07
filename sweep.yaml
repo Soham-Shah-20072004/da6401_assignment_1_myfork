@@ -1,28 +1,30 @@
 program: src/train.py
-method: grid   # 'grid' for exhaustive search, 'random' for random search, 'bayes' for bayesian optimization
+method: bayes
 metric:
-  name: val_loss
-  goal: minimize
+  name: val_accuracy
+  goal: maximize
 parameters:
   dataset:
-    value: "mnist"          # Fix dataset to mnist for this sweep
+    value: "mnist"
   epochs:
-    value: 6           # Changed to 20 to give time for convergence
+    value: 10
   batch_size:
-    values: [32]       
+    values: [32, 64]
   optimizer:
-    values: ["sgd", "nag", "rmsprop", "nadam"] 
+    values: ["sgd", "momentum", "nag", "rmsprop", "adam", "nadam"]
   learning_rate:
-    values: [0.01, 0.001]   # 0.01 is good for SGD, but 0.001 is standard for Adam!
+    values: [0.1, 0.01, 0.001, 0.0001]
   num_layers:
-    value: 1                
+    values: [1, 2, 3]
   hidden_size:
-    value: 64
+    values: [32, 64, 128]
   activation:
-    values: ["relu", "sigmoid", "tanh"] 
+    values: ["relu", "sigmoid", "tanh"]
   loss:
-    values: ["cross_entropy", "mse"] 
+    value: "cross_entropy"
   weight_init:
-    values: ["xavier"] 
+    values: ["random", "xavier"]
+  weight_decay:
+    values: [0.0, 0.0005]
   wandb_project:
-    value: "mlp-from-scratch"
+    value: "da6401_assignment_1_myfork-src"
